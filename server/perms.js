@@ -59,6 +59,13 @@ export function canCreateJob(user) {
   return user.role === "admin" || user.role === "hiring_manager";
 }
 
+export function canGenerateJobRequirements(user, jobId) {
+  if (!user) return false;
+  if (user.role === "interviewer" || user.role === "readonly") return false;
+  if (jobId) return canEditJobContent(user, jobId);
+  return canCreateJob(user);
+}
+
 export function canMutateCandidate(user, jobId) {
   return canMoveCandidate(user, jobId);
 }

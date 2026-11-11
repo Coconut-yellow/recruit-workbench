@@ -23,6 +23,7 @@ import {
   repairMojibake,
   looksGarbled,
 } from "./extract.js";
+import { generateJobRequirements } from "./llm.js";
 import {
   getTenantAccessToken,
   batchGetIdByEmails,
@@ -272,6 +273,27 @@ router.get("/jobs", requireUser, (req, res) => {
       canMove: perms.canMoveCandidate(req.user, j.id),
     })),
   });
+});
+
+router.post("/jobs/generate-requirements", requireUser, async (req, res) => {
+  try {
+    const jobId = req.body?.jobId || "";
+    if (jobId) {
+      const job = get("SELECT id FROM jobs WHERE id = ?", [jobId]);
+      if (!job) return res.status(404).json({ error: "职位不存在" });
+    }
+    perms.assert(
+      perms.canGenerateJobRequirements(req.user, jobId),
+      "当前角色不能根据 JD 生成要求"
+    );
+    const generated = await generateJobRequirements({
+      jd: req.body?.jd,
+      title: req.body?.title,
+    });
+    res.json(generated);
+  } catch (err) {
+    handleError(res, err);
+  }
 });
 
 router.post("/jobs", requireUser, (req, res) => {

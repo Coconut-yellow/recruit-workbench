@@ -61,6 +61,9 @@ DEV_LOGIN=1 NODE_ENV=production npm run start:prod
 | `FEISHU_NOTIFY_CHAT_ID` | 可选，阶段变更时额外通知该飞书群（`chat_id`） |
 | `FEISHU_RESUME_FOLDER_TOKEN` | 可选。飞书云空间「招聘台简历存档」的文件夹 token。留空时，管理员用飞书重新登录后会创建文件夹，并在服务日志和「飞书」页打印 token |
 | `NODE_ENV` | `production` 时提供构建后的前端；其他情况使用 Vite 开发中间件 |
+| `LLM_API_KEY` | 根据 JD 生成必须/加分时必填。不要写入仓库 |
+| `LLM_BASE_URL` | 可选。OpenAI 兼容接口根路径，不含 `/chat/completions`。默认 `https://api.openai.com/v1`。DeepSeek 用 `https://api.deepseek.com/v1` |
+| `LLM_MODEL` | 可选。默认 `gpt-4o-mini`。DeepSeek 可设为 `deepseek-chat` |
 
 开放平台为中国区：`https://open.feishu.cn`。
 

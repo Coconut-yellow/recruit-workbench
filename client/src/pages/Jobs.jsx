@@ -12,6 +12,7 @@ export default function Jobs({ ctx }) {
   const [editing, setEditing] = useState(null);
   const [users, setUsers] = useState([]);
   const [assign, setAssign] = useState({ jobId: "", userId: "", role: "interviewer" });
+  const [generating, setGenerating] = useState(false);
 
   async function loadUsers() {
     const data = await api.users();
@@ -39,6 +40,29 @@ export default function Jobs({ ctx }) {
       await refresh();
     } catch (err) {
       toast(err.message, "danger");
+    }
+  }
+
+  async function generateFromJd() {
+    const jd = form.jd.trim();
+    if (!jd || generating) return;
+    if (form.must.trim() || form.nice.trim()) {
+      const confirmed = window.confirm("必须或加分里已有内容，生成结果会覆盖它们。确定继续？");
+      if (!confirmed) return;
+    }
+    setGenerating(true);
+    try {
+      const data = await api.generateJobRequirements({
+        jd,
+        title: form.title,
+        jobId: editing || undefined,
+      });
+      setForm((prev) => ({ ...prev, must: data.must || "", nice: data.nice || "" }));
+      toast("已填入必须和加分，请检查后保存");
+    } catch (err) {
+      toast(err.message, "danger");
+    } finally {
+      setGenerating(false);
     }
   }
 
@@ -125,6 +149,17 @@ export default function Jobs({ ctx }) {
           <label className="label" style={{ marginTop: 12 }}>职位描述
             <textarea className="textarea" value={form.jd} onChange={(e) => setForm({ ...form, jd: e.target.value })} />
           </label>
+          <div className="row" style={{ marginTop: 8 }}>
+            <button
+              className="btn"
+              type="button"
+              onClick={generateFromJd}
+              disabled={!form.jd.trim() || generating}
+            >
+              {generating ? "生成中…" : "根据 JD 生成"}
+            </button>
+            <span className="faint">只填入必须和加分，不会自动保存。</span>
+          </div>
           <div className="row" style={{ marginTop: 12 }}>
             <button className="btn btn-primary" type="submit">{editing ? "保存" : "创建"}</button>
             {editing ? (
