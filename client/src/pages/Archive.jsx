@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { useToast } from "../toast.jsx";
+import ProfileCard from "../ProfileCard.jsx";
 
 export default function Archive({ ctx }) {
   const { jobs, candidates, refresh, user } = ctx;
@@ -103,21 +104,7 @@ export default function Archive({ ctx }) {
               </button>
             ) : null}
           </div>
-          <p className="muted">
-            解析姓名：{r.parsed_name || "未识别"} · 头衔：{r.parsed_title || "未识别"} · 年限：{r.parsed_years || "—"}
-          </p>
-          <div className="kw">
-            {(r.parsed_stacks || []).map((s) => (
-              <span className="tag teal" key={s}>{s}</span>
-            ))}
-          </div>
-          {r.extracted_text ? (
-            <p className="faint" style={{ whiteSpace: "pre-wrap", maxHeight: 90, overflow: "auto" }}>
-              {r.extracted_text.slice(0, 400)}
-            </p>
-          ) : (
-            <p className="faint">未能提取正文，已按文件名保存。</p>
-          )}
+          <ProfileCard profile={r.parsed_profile} stacks={r.parsed_stacks} fallbackName={r.parsed_name} />
           <div className="form-grid" style={{ marginTop: 8 }}>
             <label className="label">关联职位
               <select

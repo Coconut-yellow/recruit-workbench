@@ -47,6 +47,19 @@ export function exec(sql) {
   persistSoon();
 }
 
+function ensureColumn(table, name, type) {
+  const cols = all(`PRAGMA table_info(${table})`);
+  if (!cols.some((col) => col.name === name)) {
+    exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`);
+  }
+}
+
+function ensureResumeColumns() {
+  ensureColumn("candidates", "profile", "TEXT");
+  ensureColumn("resumes", "parsed_profile", "TEXT");
+  ensureColumn("resumes", "parse_version", "INTEGER");
+}
+
 function createSchema() {
   exec(`
     CREATE TABLE IF NOT EXISTS users (
@@ -103,6 +116,7 @@ function createSchema() {
       resume_id TEXT,
       email TEXT,
       notes TEXT,
+      profile TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -121,6 +135,8 @@ function createSchema() {
       candidate_id TEXT,
       job_id TEXT,
       uploaded_by TEXT,
+      parsed_profile TEXT,
+      parse_version INTEGER,
       created_at TEXT NOT NULL
     );
 
@@ -298,6 +314,7 @@ export async function initDb() {
   }
   exec("PRAGMA foreign_keys = ON;");
   createSchema();
+  ensureResumeColumns();
   seedIfEmpty();
   persistNow();
 }

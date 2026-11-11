@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { api } from "../api.js";
 import { useToast } from "../toast.jsx";
+import ProfileCard from "../ProfileCard.jsx";
 
 export default function Match({ ctx }) {
   const { jobs } = ctx;
@@ -112,11 +113,18 @@ export default function Match({ ctx }) {
           {result.shortlist.map((c) => (
             <div key={c.id} style={{ padding: "12px 0", borderBottom: "1px solid var(--line)" }}>
               <div className="row">
-                <b>{c.name}</b>
-                <span className="muted">{c.title} · {c.job_title || "未关联职位"}</span>
+                <b>{c.profile?.name || c.name}</b>
+                <span className="muted">{c.job_title || "未关联职位"}</span>
                 <div className="space" />
                 <strong>{c.match.score}</strong>
               </div>
+              <ProfileCard
+                profile={c.profile}
+                stacks={c.stacks}
+                fallbackName={c.name}
+                fallbackTitle={c.title}
+                fallbackYears={c.years}
+              />
               <div className="score" style={{ margin: "8px 0" }}>
                 <span style={{ width: `${c.match.score}%` }} />
               </div>

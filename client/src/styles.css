@@ -262,6 +262,23 @@ table.data th { color: var(--ink-faint); font-weight: 550; font-size: 12px; }
 .alert.ok { background: var(--ok-soft); color: var(--ok); }
 .alert.info { background: var(--info-soft); color: var(--info); }
 
+.profile-card { display: grid; gap: 7px; padding: 2px 0 4px; }
+.profile-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-height: 24px; }
+.profile-head .pname { font-size: 16px; font-weight: 700; letter-spacing: 0.01em; }
+.profile-head .pmeta { color: var(--ink-soft); font-size: 13px; }
+.profile-contact { color: var(--ink-faint); font-size: 12px; padding-left: 24px; }
+.profile-row { display: flex; gap: 8px; align-items: flex-start; color: var(--ink-soft); font-size: 13px; line-height: 1.45; }
+.profile-ico { width: 16px; height: 16px; flex: none; margin-top: 2px; color: #9a9186; }
+.profile-ico.lock { width: 14px; height: 14px; margin-top: 0; color: #1b7f4e; }
+.profile-tags { margin-top: 2px; }
+.tag.plain {
+  background: #fff;
+  border: 1px solid #d9d0c4;
+  color: var(--ink-soft);
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+
 .kw { display: flex; flex-wrap: wrap; gap: 6px; }
 .kw button {
   border: 0; background: transparent; color: var(--ink-faint); cursor: pointer; padding: 0 2px;

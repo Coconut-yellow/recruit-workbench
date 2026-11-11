@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { api } from "../api.js";
 import { STAGES } from "../constants.js";
 import { useToast, formatNotify } from "../toast.jsx";
+import ProfileCard from "../ProfileCard.jsx";
 
 export default function Board({ ctx }) {
   const { jobs, candidates, refresh } = ctx;
@@ -93,8 +94,12 @@ export default function Board({ ctx }) {
                   onDragStart={(e) => e.dataTransfer.setData("text/plain", c.id)}
                   onClick={() => openCard(c)}
                 >
-                  <div className="name">{c.name}</div>
-                  <div className="sub">{c.title || "—"} · {c.years || 0} 年</div>
+                  <div className="name">{c.profile?.name || c.name}</div>
+                  <div className="sub">
+                    {[c.profile?.gender, c.profile?.age ? `${c.profile.age}岁` : "", c.profile?.degree || c.title || "—"]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </div>
                   <div className="row">
                     <span className="tag brand">{c.job_title || "未关联职位"}</span>
                     <div className="space" />
@@ -124,21 +129,19 @@ export default function Board({ ctx }) {
         <div className="modal-backdrop" onClick={() => setOpen(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="row">
-              <h3 style={{ margin: 0 }}>{open.name}</h3>
+              <h3 style={{ margin: 0 }}>{open.job_title || "未关联职位"}</h3>
               <div className="space" />
               <button className="btn btn-sm btn-ghost" type="button" onClick={() => setOpen(null)}>
                 关闭
               </button>
             </div>
-            <p className="muted">
-              {open.title} · {open.years || 0} 年经验 · {open.job_title || "未关联职位"}
-            </p>
-            <div className="kw">
-              {(open.stacks || []).map((s) => (
-                <span className="tag teal" key={s}>{s}</span>
-              ))}
-            </div>
-            <p className="muted">{(open.highlights || []).join(" · ")}</p>
+            <ProfileCard
+              profile={open.profile}
+              stacks={open.stacks}
+              fallbackName={open.name}
+              fallbackTitle={open.title}
+              fallbackYears={open.years}
+            />
             <div className="label">
               调整阶段
               <select

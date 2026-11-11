@@ -13,7 +13,16 @@ import {
   handleJsapiCode,
 } from "./auth.js";
 import * as perms from "./perms.js";
-import { extractFile, extractJdKeywords, scoreCandidate } from "./extract.js";
+import {
+  extractFile,
+  extractJdKeywords,
+  scoreCandidate,
+  PARSE_VERSION,
+  presentFilename,
+  parseResumeText,
+  repairMojibake,
+  looksGarbled,
+} from "./extract.js";
 import {
   getTenantAccessToken,
   batchGetIdByEmails,
@@ -37,16 +46,112 @@ function shapeCandidate(row) {
     ...row,
     stacks: parseJsonCol(row.stacks, []),
     highlights: parseJsonCol(row.highlights, []),
+    profile: parseJsonCol(row.profile, null),
   };
 }
 
 function shapeResume(row) {
   if (!row) return null;
+  const profile = parseJsonCol(row.parsed_profile, null);
+  const quality = profile?.textQuality;
+  const text = row.extracted_text ? String(row.extracted_text) : "";
+  const showText = quality === "ok" && text && !looksGarbled(text);
   return {
     ...row,
+    original_name: presentFilename(row.original_name),
     parsed_stacks: parseJsonCol(row.parsed_stacks, []),
-    extracted_text: row.extracted_text ? String(row.extracted_text).slice(0, 4000) : "",
+    parsed_profile: profile,
+    extracted_text: showText ? text.slice(0, 4000) : "",
   };
+}
+
+function profileHighlights(profile) {
+  return [
+    ...(profile?.education || []).map((item) => item.line).filter(Boolean),
+    ...(profile?.work || []).map((item) => item.line).filter(Boolean),
+  ];
+}
+
+async function parsedFromStoredResume(row) {
+  const filename = presentFilename(row.original_name);
+  const filePath = path.join(RESUME_DIR, row.stored_name || "");
+  if (row.stored_name && fs.existsSync(filePath)) {
+    const parsed = await extractFile(filePath, filename, row.mime);
+    parsed.profile.fileMissing = false;
+    parsed.filename = filename;
+    return parsed;
+  }
+  const parsed = parseResumeText(repairMojibake(row.extracted_text || ""), filename);
+  parsed.method = "stored-text";
+  parsed.profile.fileMissing = true;
+  if (parsed.profile.textQuality === "ok") parsed.profile.textQuality = "partial";
+  return parsed;
+}
+
+function syncLinkedCandidate(row, profile, stacks) {
+  if (!row.candidate_id) return;
+  const candidate = get("SELECT * FROM candidates WHERE id = ?", [row.candidate_id]);
+  if (!candidate) return;
+  const badName = !candidate.name
+    || candidate.name === "未识别"
+    || looksGarbled(candidate.name)
+    || candidate.name === row.parsed_name;
+  if (!badName && candidate.profile) return;
+  const highlights = profileHighlights(profile);
+  const previousStacks = parseJsonCol(candidate.stacks, []);
+  const previousHighlights = parseJsonCol(candidate.highlights, []);
+  run(
+    `UPDATE candidates SET name=?, title=?, years=?, stacks=?, highlights=?, email=?, profile=?, updated_at=? WHERE id=?`,
+    [
+      badName ? (profile.name || "未识别") : candidate.name,
+      badName ? (profile.title || candidate.title || "") : (candidate.title || profile.title || ""),
+      badName ? Number(profile.years || 0) : Number(candidate.years || profile.years || 0),
+      JSON.stringify(stacks.length ? stacks : previousStacks),
+      JSON.stringify(highlights.length ? highlights : previousHighlights),
+      candidate.email || profile.email || "",
+      JSON.stringify(profile),
+      nowIso(),
+      candidate.id,
+    ]
+  );
+}
+
+function persistResumeParse(row, parsed) {
+  const profile = parsed.profile || {};
+  const filename = parsed.filename || presentFilename(row.original_name);
+  run(
+    `UPDATE resumes SET original_name=?, extracted_text=?, parsed_name=?, parsed_title=?, parsed_years=?, parsed_stacks=?, parsed_profile=?, parse_version=? WHERE id=?`,
+    [
+      filename,
+      parsed.text || "",
+      profile.name || "",
+      profile.title || "",
+      profile.years ?? null,
+      JSON.stringify(parsed.stacks || []),
+      JSON.stringify(profile),
+      PARSE_VERSION,
+      row.id,
+    ]
+  );
+  syncLinkedCandidate(row, profile, parsed.stacks || []);
+  row.original_name = filename;
+  row.extracted_text = parsed.text || "";
+  row.parsed_name = profile.name || "";
+  row.parsed_title = profile.title || "";
+  row.parsed_years = profile.years ?? null;
+  row.parsed_stacks = JSON.stringify(parsed.stacks || []);
+  row.parsed_profile = JSON.stringify(profile);
+  row.parse_version = PARSE_VERSION;
+  return row;
+}
+
+async function refreshResume(row) {
+  if (Number(row.parse_version || 0) >= PARSE_VERSION) return row;
+  try {
+    return persistResumeParse(row, await parsedFromStoredResume(row));
+  } catch {
+    return row;
+  }
 }
 
 function jobScopeSql(user, alias = "job_id") {
@@ -455,6 +560,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
+  defParamCharset: "utf8",
   limits: { fileSize: 15 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     const ext = path.extname(file.originalname || "").toLowerCase();
@@ -470,29 +576,35 @@ const upload = multer({
   },
 });
 
-router.get("/resumes", requireUser, (req, res) => {
-  let where;
-  let params;
-  if (perms.isAdmin(req.user)) {
-    where = "1=1";
-    params = [];
-  } else {
-    const ids = perms.visibleJobIds(req.user) || [];
-    const ph = ids.length ? ids.map(() => "?").join(",") : "NULL";
-    where = `(r.uploaded_by = ? OR r.job_id IN (${ph}))`;
-    params = [req.user.id, ...ids];
+router.get("/resumes", requireUser, async (req, res) => {
+  try {
+    let where;
+    let params;
+    if (perms.isAdmin(req.user)) {
+      where = "1=1";
+      params = [];
+    } else {
+      const ids = perms.visibleJobIds(req.user) || [];
+      const ph = ids.length ? ids.map(() => "?").join(",") : "NULL";
+      where = `(r.uploaded_by = ? OR r.job_id IN (${ph}))`;
+      params = [req.user.id, ...ids];
+    }
+    const rows = all(
+      `SELECT r.*, c.name AS candidate_name, j.title AS job_title, u.name AS uploader_name
+       FROM resumes r
+       LEFT JOIN candidates c ON c.id = r.candidate_id
+       LEFT JOIN jobs j ON j.id = r.job_id
+       LEFT JOIN users u ON u.id = r.uploaded_by
+       WHERE ${where}
+       ORDER BY r.created_at DESC`,
+      params
+    );
+    const refreshed = [];
+    for (const row of rows) refreshed.push(await refreshResume(row));
+    res.json({ resumes: refreshed.map(shapeResume) });
+  } catch (err) {
+    handleError(res, err);
   }
-  const rows = all(
-    `SELECT r.*, c.name AS candidate_name, j.title AS job_title, u.name AS uploader_name
-     FROM resumes r
-     LEFT JOIN candidates c ON c.id = r.candidate_id
-     LEFT JOIN jobs j ON j.id = r.job_id
-     LEFT JOIN users u ON u.id = r.uploaded_by
-     WHERE ${where}
-     ORDER BY r.created_at DESC`,
-    params
-  );
-  res.json({ resumes: rows.map(shapeResume) });
 });
 
 router.post("/resumes", requireUser, (req, res) => {
@@ -507,22 +619,27 @@ router.post("/resumes", requireUser, (req, res) => {
       if (jobId && !perms.canSeeJob(req.user, jobId)) {
         return res.status(403).json({ error: "无权关联到该职位" });
       }
-      const parsed = await extractFile(req.file.path, req.file.originalname, req.file.mimetype);
+      const filename = presentFilename(req.file.originalname);
+      const parsed = await extractFile(req.file.path, filename, req.file.mimetype);
+      parsed.filename = filename;
+      const profile = parsed.profile || {};
       const id = newId("res");
       run(
-        `INSERT INTO resumes (id, stored_name, original_name, mime, size, extracted_text, parsed_name, parsed_title, parsed_years, parsed_stacks, candidate_id, job_id, uploaded_by, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO resumes (id, stored_name, original_name, mime, size, extracted_text, parsed_name, parsed_title, parsed_years, parsed_stacks, parsed_profile, parse_version, candidate_id, job_id, uploaded_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           id,
           req.file.filename,
-          req.file.originalname,
+          filename,
           req.file.mimetype,
           req.file.size,
           parsed.text || "",
-          parsed.name || "",
-          parsed.title || "",
-          parsed.years,
+          profile.name || "",
+          profile.title || "",
+          profile.years ?? null,
           JSON.stringify(parsed.stacks || []),
+          JSON.stringify(profile),
+          PARSE_VERSION,
           req.body?.candidateId || null,
           jobId,
           req.user.id,
@@ -540,8 +657,13 @@ router.post("/resumes", requireUser, (req, res) => {
       res.json({
         resume: shapeResume(row),
         parseWarning:
-          parsed.method === "pdftotext-failed" || parsed.method === "extract-error" || parsed.method === "unsupported-doc"
-            ? "未能提取正文，已按文件名归档，可稍后补全信息。"
+          parsed.method === "pdftotext-failed"
+          || parsed.method === "pdftotext-missing"
+          || parsed.method === "extract-error"
+          || parsed.method === "unsupported-doc"
+          || profile.textQuality === "garbled"
+          || profile.textQuality === "empty"
+            ? "未能可靠提取中文正文。已保留可识别字段，乱码不会当作姓名。"
             : "",
       });
     } catch (e) {
@@ -579,11 +701,12 @@ router.patch("/resumes/:id", requireUser, (req, res) => {
   }
 });
 
-router.post("/resumes/:id/import", requireUser, (req, res) => {
+router.post("/resumes/:id/import", requireUser, async (req, res) => {
   try {
     if (req.user.role === "readonly") return res.status(403).json({ error: "只读角色不能写入人才库" });
-    const row = get("SELECT * FROM resumes WHERE id = ?", [req.params.id]);
+    let row = get("SELECT * FROM resumes WHERE id = ?", [req.params.id]);
     if (!row) return res.status(404).json({ error: "简历不存在" });
+    row = await refreshResume(row);
     const jobId = req.body?.jobId || row.job_id || null;
     if (jobId) {
       perms.assert(perms.canMutateCandidate(req.user, jobId), "无权写入该职位");
@@ -596,19 +719,24 @@ router.post("/resumes/:id/import", requireUser, (req, res) => {
     }
     const id = newId("can");
     const now = nowIso();
+    const profile = parseJsonCol(row.parsed_profile, null) || {};
     const stacks = parseJsonCol(row.parsed_stacks, []);
+    const highlights = profileHighlights(profile);
+    const name = profile.name || row.parsed_name || "未识别";
     run(
-      `INSERT INTO candidates (id, name, title, years, stacks, highlights, stage, score_base, job_id, resume_id, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, '待筛选', 70, ?, ?, ?, ?)`,
+      `INSERT INTO candidates (id, name, title, years, stacks, highlights, stage, score_base, job_id, resume_id, email, profile, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, '待筛选', 70, ?, ?, ?, ?, ?, ?)`,
       [
         id,
-        row.parsed_name || path.parse(row.original_name).name,
-        row.parsed_title || "",
-        row.parsed_years || 0,
+        looksGarbled(name) ? "未识别" : name,
+        profile.title || row.parsed_title || "",
+        Number(profile.years || row.parsed_years || 0),
         JSON.stringify(stacks),
-        JSON.stringify([]),
+        JSON.stringify(highlights),
         jobId,
         row.id,
+        profile.email || "",
+        JSON.stringify(profile),
         now,
         now,
       ]
@@ -635,7 +763,7 @@ router.get("/resumes/:id/file", requireUser, (req, res) => {
   }
   const filePath = path.join(RESUME_DIR, row.stored_name);
   if (!fs.existsSync(filePath)) return res.status(404).json({ error: "文件已丢失" });
-  res.download(filePath, row.original_name);
+  res.download(filePath, presentFilename(row.original_name));
 });
 
 router.post("/match", requireUser, (req, res) => {

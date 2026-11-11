@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { api } from "../api.js";
 import { STAGES } from "../constants.js";
 import { useToast, formatNotify } from "../toast.jsx";
+import ProfileCard from "../ProfileCard.jsx";
 
 const EMPTY = {
   name: "", title: "", years: "", stacks: "", highlights: "",
@@ -105,66 +106,45 @@ export default function Talent({ ctx }) {
           </div>
         </form>
       ) : null}
-      <div className="card table-wrap">
-        <table className="data">
-          <thead>
-            <tr>
-              <th>姓名</th>
-              <th>背景</th>
-              <th>技能</th>
-              <th>职位</th>
-              <th>阶段</th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.map((c) => (
-              <tr key={c.id}>
-                <td>
-                  <b>{c.name}</b>
-                  <div className="faint">{c.years || 0} 年</div>
-                </td>
-                <td>
-                  {c.title}
-                  <div className="faint">{(c.highlights || []).join(" · ")}</div>
-                </td>
-                <td>
-                  <div className="kw">
-                    {(c.stacks || []).slice(0, 8).map((s) => (
-                      <span className="tag" key={s}>{s}</span>
-                    ))}
-                  </div>
-                </td>
-                <td>
-                  <select
-                    className="select"
-                    value={c.job_id || ""}
-                    disabled={!canEdit}
-                    onChange={(e) => changeJob(c, e.target.value)}
-                  >
-                    <option value="">未关联</option>
-                    {jobs.map((j) => (
-                      <option key={j.id} value={j.id}>{j.title}</option>
-                    ))}
-                  </select>
-                </td>
-                <td>
-                  <select
-                    className="select"
-                    value={c.stage}
-                    disabled={!canEdit || !c.job_id}
-                    onChange={(e) => move(c, e.target.value)}
-                  >
-                    {STAGES.map((s) => (
-                      <option key={s}>{s}</option>
-                    ))}
-                  </select>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {!list.length ? <p className="muted">没有符合条件的候选人。</p> : null}
-      </div>
+      {list.map((c) => (
+        <article className="card" key={c.id}>
+          <ProfileCard
+            profile={c.profile}
+            stacks={c.stacks}
+            fallbackName={c.name}
+            fallbackTitle={c.title}
+            fallbackYears={c.years}
+          />
+          <div className="form-grid" style={{ marginTop: 10 }}>
+            <label className="label">关联职位
+              <select
+                className="select"
+                value={c.job_id || ""}
+                disabled={!canEdit}
+                onChange={(e) => changeJob(c, e.target.value)}
+              >
+                <option value="">未关联</option>
+                {jobs.map((j) => (
+                  <option key={j.id} value={j.id}>{j.title}</option>
+                ))}
+              </select>
+            </label>
+            <label className="label">阶段
+              <select
+                className="select"
+                value={c.stage}
+                disabled={!canEdit || !c.job_id}
+                onChange={(e) => move(c, e.target.value)}
+              >
+                {STAGES.map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </article>
+      ))}
+      {!list.length ? <div className="card muted">没有符合条件的候选人。</div> : null}
     </>
   );
 }
