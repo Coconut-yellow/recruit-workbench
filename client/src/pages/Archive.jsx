@@ -9,6 +9,7 @@ export default function Archive({ ctx }) {
   const [resumes, setResumes] = useState([]);
   const [drag, setDrag] = useState(false);
   const [jobId, setJobId] = useState("");
+  const [driveError, setDriveError] = useState("");
   const canEdit = user.role !== "readonly";
 
   async function load() {
@@ -18,6 +19,12 @@ export default function Archive({ ctx }) {
 
   useEffect(() => {
     load().catch((err) => toast(err.message, "danger"));
+    api.feishuStatus()
+      .then((status) => {
+        if (status.drive?.ready) setDriveError("");
+        else setDriveError(status.drive?.lastError || "简历云备份尚未就绪。管理员需要用飞书重新登录，并开通云空间权限。");
+      })
+      .catch(() => {});
   }, []);
 
   async function upload(file) {
@@ -27,7 +34,8 @@ export default function Archive({ ctx }) {
     try {
       const data = await api.uploadResume(form);
       if (data.parseWarning) toast(data.parseWarning, "warn");
-      else toast("简历已归档");
+      if (data.cloudWarning) toast(data.cloudWarning, "warn");
+      if (!data.parseWarning && !data.cloudWarning) toast("简历已归档");
       await load();
     } catch (err) {
       toast(err.message, "danger");
@@ -91,6 +99,7 @@ export default function Archive({ ctx }) {
       ) : (
         <div className="alert info">只读角色可以查看已归档的简历，但不能上传。</div>
       )}
+      {driveError ? <div className="alert danger">{driveError}</div> : null}
       {resumes.map((r) => (
         <article className="card" key={r.id}>
           <div className="row">
@@ -105,6 +114,8 @@ export default function Archive({ ctx }) {
             ) : null}
           </div>
           <ProfileCard profile={r.parsed_profile} stacks={r.parsed_stacks} fallbackName={r.parsed_name} />
+          {r.feishu_error ? <div className="alert danger">云备份失败：{r.feishu_error}</div> : null}
+          {r.feishu_file_token ? <p className="faint">原件已备份到飞书云空间。</p> : null}
           <div className="form-grid" style={{ marginTop: 8 }}>
             <label className="label">关联职位
               <select

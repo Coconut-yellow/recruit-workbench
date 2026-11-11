@@ -55,13 +55,25 @@ export async function getTenantAccessToken() {
   return { ok: true, token: cachedTenant.token, expire: body.expire, cached: false };
 }
 
+// Keep this list aligned with client/src/api.js requestAccess scopeList.
+// drive:file covers upload, download, and adding a collaborator.
+// Do not request drive:drive; these narrower scopes are enough.
+export const USER_OAUTH_SCOPES = [
+  "auth:user.id:read",
+  "drive:file",
+  "space:folder:create",
+  "space:document:retrieve",
+  "space:document:delete",
+  "drive:drive.metadata:readonly",
+];
+
 export function buildAuthorizeUrl(state, redirectUri = FEISHU_REDIRECT_URI) {
   const url = new URL(`${ACCOUNTS_BASE}/open-apis/authen/v1/authorize`);
   url.searchParams.set("client_id", APP_ID);
   url.searchParams.set("redirect_uri", redirectUri);
   url.searchParams.set("response_type", "code");
   url.searchParams.set("state", state);
-  url.searchParams.set("scope", "auth:user.id:read");
+  url.searchParams.set("scope", USER_OAUTH_SCOPES.join(" "));
   return url.toString();
 }
 

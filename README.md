@@ -59,9 +59,21 @@ DEV_LOGIN=1 NODE_ENV=production npm run start:prod
 | `SESSION_SECRET` | 会话签名。省略时写入 `data/session.secret` |
 | `DEV_LOGIN` | 设为 `1` 时开启本地开发登录。`NODE_ENV=production` 时不会默认打开，必须显式设置 |
 | `FEISHU_NOTIFY_CHAT_ID` | 可选，阶段变更时额外通知该飞书群（`chat_id`） |
+| `FEISHU_RESUME_FOLDER_TOKEN` | 可选。飞书云空间「招聘台简历存档」的文件夹 token。留空时，管理员用飞书重新登录后会创建文件夹，并在服务日志和「飞书」页打印 token |
 | `NODE_ENV` | `production` 时提供构建后的前端；其他情况使用 Vite 开发中间件 |
 
 开放平台为中国区：`https://open.feishu.cn`。
+
+简历原件和 `recruit.db` 会备份到飞书云空间，避免 Render 免费实例重新部署后本地 `data/` 被清空。应用需要开通并发布这些权限（不要开通 `drive:drive`）：
+
+- `auth:user.id:read`（原有登录权限）
+- `drive:file`（上传、下载文件到云空间，并添加协作者）
+- `space:folder:create`（创建云空间文件夹）
+- `space:document:retrieve`（获取文件夹中的文件清单）
+- `space:document:delete`（删掉被替换的旧数据库备份）
+- `drive:drive.metadata:readonly`（查看云空间根目录，便于重新部署后找回文件夹）
+
+权限发布后，管理员要重新用飞书登录一次。如果应用仍然不能访问个人云空间里的文件夹，给应用加上机器人，建一个群把机器人拉进去，再把文件夹分享给该群并设为「可管理」。云备份失败时，存档页和飞书页会直接提示，不会显示成已经持久化。
 
 ## 飞书开发者后台需要填写的字段
 

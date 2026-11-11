@@ -13,6 +13,7 @@ import {
   exchangeCodeForUserToken,
   getUserInfo,
 } from "./feishu.js";
+import { provisionDriveFolder } from "./drive.js";
 
 const oauthStates = new Map();
 
@@ -200,6 +201,13 @@ export async function handleFeishuCallback(req, res) {
       return res.redirect(`/?login_error=${encodeURIComponent(info.error)}`);
     }
     const user = upsertFeishuUser(info.user);
+    if (user.role === "admin") {
+      try {
+        await provisionDriveFolder(token.accessToken, user.feishu_open_id || "");
+      } catch (err) {
+        console.log(`飞书云空间准备失败：${err.message}`);
+      }
+    }
     const sid = createSession(user.id);
     setSessionCookie(res, sid);
     res.redirect("/");
@@ -217,6 +225,13 @@ export async function handleJsapiCode(req, res) {
     const info = await getUserInfo(token.accessToken);
     if (!info.ok) return res.status(400).json({ error: info.error });
     const user = upsertFeishuUser(info.user);
+    if (user.role === "admin") {
+      try {
+        await provisionDriveFolder(token.accessToken, user.feishu_open_id || "");
+      } catch (err) {
+        console.log(`飞书云空间准备失败：${err.message}`);
+      }
+    }
     const sid = createSession(user.id);
     setSessionCookie(res, sid);
     res.json({ user: publicUser(user) });

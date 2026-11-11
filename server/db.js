@@ -5,18 +5,35 @@ import { DB_PATH, STAGES } from "./config.js";
 let sqlDb;
 let persistTimer;
 let SQL;
+let persistHook = null;
 
-function persistNow() {
+export function setPersistHook(fn) {
+  persistHook = typeof fn === "function" ? fn : null;
+}
+
+function persistNow({ scheduleCloud = true } = {}) {
   if (!sqlDb) return;
   const data = Buffer.from(sqlDb.export());
   const tmp = `${DB_PATH}.tmp`;
   fs.writeFileSync(tmp, data);
   fs.renameSync(tmp, DB_PATH);
+  if (scheduleCloud && persistHook) {
+    try {
+      persistHook();
+    } catch (err) {
+      console.log(`数据库云备份调度失败：${err.message}`);
+    }
+  }
+}
+
+export function flushDb() {
+  clearTimeout(persistTimer);
+  persistNow({ scheduleCloud: false });
 }
 
 function persistSoon() {
   clearTimeout(persistTimer);
-  persistTimer = setTimeout(persistNow, 40);
+  persistTimer = setTimeout(() => persistNow(), 40);
 }
 
 export function all(sql, params = []) {
@@ -58,6 +75,9 @@ function ensureResumeColumns() {
   ensureColumn("candidates", "profile", "TEXT");
   ensureColumn("resumes", "parsed_profile", "TEXT");
   ensureColumn("resumes", "parse_version", "INTEGER");
+  ensureColumn("resumes", "feishu_file_token", "TEXT");
+  ensureColumn("resumes", "feishu_uploaded_at", "TEXT");
+  ensureColumn("resumes", "feishu_error", "TEXT");
 }
 
 function createSchema() {
@@ -137,6 +157,9 @@ function createSchema() {
       uploaded_by TEXT,
       parsed_profile TEXT,
       parse_version INTEGER,
+      feishu_file_token TEXT,
+      feishu_uploaded_at TEXT,
+      feishu_error TEXT,
       created_at TEXT NOT NULL
     );
 
@@ -321,7 +344,7 @@ export async function initDb() {
 
 export function closeDb() {
   clearTimeout(persistTimer);
-  persistNow();
+  persistNow({ scheduleCloud: false });
 }
 
 export function parseJsonCol(value, fallback) {

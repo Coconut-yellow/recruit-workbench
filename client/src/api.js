@@ -29,6 +29,8 @@ export const api = {
   jsapiLogin: (code) => request("/api/auth/feishu/jsapi", { method: "POST", body: { code } }),
   me: () => request("/api/me"),
   feishuStatus: () => request("/api/feishu/status"),
+  driveStatus: () => request("/api/feishu/drive"),
+  driveBackfill: () => request("/api/feishu/drive/backfill", { method: "POST" }),
   tokenCheck: () => request("/api/feishu/token-check", { method: "POST" }),
   jobs: () => request("/api/jobs"),
   createJob: (body) => request("/api/jobs", { method: "POST", body }),
@@ -84,7 +86,14 @@ export async function requestFeishuJsapiCode(appId) {
       if (tt.requestAccess) {
         tt.requestAccess({
           appID: appId,
-          scopeList: ["auth:user.id:read"],
+          scopeList: [
+            "auth:user.id:read",
+            "drive:file",
+            "space:folder:create",
+            "space:document:retrieve",
+            "space:document:delete",
+            "drive:drive.metadata:readonly",
+          ],
           success: (res) => resolve(res.code),
           fail: (err) => {
             if (tt.requestAuthCode) {

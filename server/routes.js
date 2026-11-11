@@ -29,6 +29,13 @@ import {
   notifyStageChange,
   feishuPublicStatus,
 } from "./feishu.js";
+import {
+  backfillLocalResumes,
+  driveStatus,
+  materializeResumeFile,
+  missingResumeMessage,
+  uploadResumeBytes,
+} from "./drive.js";
 
 const router = express.Router();
 
@@ -74,9 +81,9 @@ function profileHighlights(profile) {
 
 async function parsedFromStoredResume(row) {
   const filename = presentFilename(row.original_name);
-  const filePath = path.join(RESUME_DIR, row.stored_name || "");
-  if (row.stored_name && fs.existsSync(filePath)) {
-    const parsed = await extractFile(filePath, filename, row.mime);
+  const file = await materializeResumeFile(row);
+  if (file.ok) {
+    const parsed = await extractFile(file.path, filename, row.mime);
     parsed.profile.fileMissing = false;
     parsed.filename = filename;
     return parsed;
@@ -203,7 +210,23 @@ router.get("/feishu/status", requireUser, async (_req, res) => {
     tenantToken: token.ok,
     tenantError: token.ok ? "" : token.error || "",
     tenantCached: Boolean(token.cached),
+    drive: driveStatus({ includeToken: false }),
   });
+});
+
+router.get("/feishu/drive", requireUser, (req, res) => {
+  if (!perms.isAdmin(req.user)) return res.status(403).json({ error: "只有管理员可以查看云空间配置" });
+  res.json(driveStatus({ includeToken: true }));
+});
+
+router.post("/feishu/drive/backfill", requireUser, async (req, res) => {
+  try {
+    if (!perms.isAdmin(req.user)) return res.status(403).json({ error: "只有管理员可以补传简历" });
+    const result = await backfillLocalResumes();
+    res.json({ ...result, drive: driveStatus({ includeToken: true }) });
+  } catch (err) {
+    handleError(res, err);
+  }
 });
 
 router.post("/feishu/token-check", requireUser, async (_req, res) => {
@@ -653,9 +676,21 @@ router.post("/resumes", requireUser, (req, res) => {
           req.body.candidateId,
         ]);
       }
+      const cloud = await uploadResumeBytes(
+        filename,
+        fs.readFileSync(req.file.path)
+      );
+      const cloudWarning = cloud.ok
+        ? ""
+        : `云备份失败：${cloud.error}。这份简历目前只在本机，重新部署后可能丢失。`;
+      run(
+        "UPDATE resumes SET feishu_file_token = ?, feishu_uploaded_at = ?, feishu_error = ? WHERE id = ?",
+        [cloud.ok ? cloud.fileToken : null, cloud.ok ? nowIso() : null, cloud.ok ? null : cloud.error, id]
+      );
       const row = get("SELECT * FROM resumes WHERE id = ?", [id]);
       res.json({
         resume: shapeResume(row),
+        cloudWarning,
         parseWarning:
           parsed.method === "pdftotext-failed"
           || parsed.method === "pdftotext-missing"
@@ -752,7 +787,8 @@ router.post("/resumes/:id/import", requireUser, async (req, res) => {
   }
 });
 
-router.get("/resumes/:id/file", requireUser, (req, res) => {
+router.get("/resumes/:id/file", requireUser, async (req, res) => {
+  try {
   const row = get("SELECT * FROM resumes WHERE id = ?", [req.params.id]);
   if (!row) return res.status(404).json({ error: "简历不存在" });
   if (!perms.isAdmin(req.user)) {
@@ -761,9 +797,21 @@ router.get("/resumes/:id/file", requireUser, (req, res) => {
       (row.job_id && perms.canSeeJob(req.user, row.job_id));
     if (!allowed) return res.status(403).json({ error: "无权下载该简历" });
   }
-  const filePath = path.join(RESUME_DIR, row.stored_name);
-  if (!fs.existsSync(filePath)) return res.status(404).json({ error: "文件已丢失" });
-  res.download(filePath, presentFilename(row.original_name));
+  const file = await materializeResumeFile(row);
+  if (!file.ok) {
+    const message = file.error || missingResumeMessage();
+    res.status(404).type("html").send(`<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8"><title>简历不可用</title></head>
+<body style="font-family:sans-serif;padding:32px;line-height:1.6;color:#1a1714;background:#f3efe6">
+<h1>打不开原简历</h1>
+<p>${message.replace(/[&<>]/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[ch]))}</p>
+</body></html>`);
+    return;
+  }
+  res.download(file.path, presentFilename(row.original_name));
+  } catch (err) {
+    if (!res.headersSent) handleError(res, err);
+  }
 });
 
 router.post("/match", requireUser, (req, res) => {

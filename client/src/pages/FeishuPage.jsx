@@ -6,12 +6,23 @@ export default function FeishuPage({ ctx, onStatus }) {
   const { user } = ctx;
   const toast = useToast();
   const [status, setStatus] = useState(null);
+  const [drive, setDrive] = useState(null);
   const [checking, setChecking] = useState(false);
+  const [filling, setFilling] = useState(false);
 
   async function load() {
     const data = await api.feishuStatus();
     setStatus(data);
     onStatus?.(Boolean(data.tenantToken));
+    if (user.role === "admin") {
+      try {
+        setDrive(await api.driveStatus());
+      } catch {
+        setDrive(data.drive || null);
+      }
+    } else {
+      setDrive(data.drive || null);
+    }
   }
 
   useEffect(() => {
@@ -29,6 +40,20 @@ export default function FeishuPage({ ctx, onStatus }) {
       toast(err.message, "danger");
     } finally {
       setChecking(false);
+    }
+  }
+
+  async function backfill() {
+    setFilling(true);
+    try {
+      const data = await api.driveBackfill();
+      setDrive(data.drive || data);
+      if (data.ok) toast(data.uploaded ? `已补传 ${data.uploaded} 份简历` : "没有需要补传的本地简历");
+      else toast(data.error || "补传失败", "danger");
+    } catch (err) {
+      toast(err.message, "danger");
+    } finally {
+      setFilling(false);
     }
   }
 
@@ -64,6 +89,29 @@ export default function FeishuPage({ ctx, onStatus }) {
             <div>{status.notifyChatConfigured ? "已配置 FEISHU_NOTIFY_CHAT_ID" : "未配置群 chat_id"}</div>
           </div>
         </div>
+      </section>
+
+      <section className="card">
+        <div className="row">
+          <h3 style={{ margin: 0 }}>云空间备份</h3>
+          <span className={`tag ${drive?.ready ? "ok" : "danger"}`}>
+            {drive?.ready ? "云备份可用" : "云备份未就绪"}
+          </span>
+          {user.role === "admin" ? (
+            <button className="btn btn-sm" type="button" onClick={backfill} disabled={filling}>
+              {filling ? "补传中…" : "补传本机简历"}
+            </button>
+          ) : null}
+        </div>
+        {drive?.lastError ? <div className="alert danger" style={{ marginTop: 12 }}>{drive.lastError}</div> : (
+          <p className="muted">原简历和人才库数据库会写到飞书云空间。备份失败时这里和存档页都会提示，不会假装已经持久化。</p>
+        )}
+        {drive?.needsGroupShare ? <p className="muted">{drive.groupShareHint}</p> : null}
+        {drive?.folderUrl ? <p className="muted">文件夹：<a href={drive.folderUrl} target="_blank" rel="noreferrer">{drive.folderUrl}</a></p> : null}
+        {user.role === "admin" && drive?.folderToken ? (
+          <p className="muted">把这个 token 写入 Render 环境变量 <code>FEISHU_RESUME_FOLDER_TOKEN</code>：<code>{drive.folderToken}</code></p>
+        ) : null}
+        {drive?.lastBackupAt ? <p className="faint">最近一次数据库备份：{new Date(drive.lastBackupAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai" })}</p> : null}
       </section>
 
       <section className="card">

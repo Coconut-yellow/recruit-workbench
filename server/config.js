@@ -46,6 +46,12 @@ export const FEISHU_REDIRECT_URI =
 
 export const FEISHU_NOTIFY_CHAT_ID = process.env.FEISHU_NOTIFY_CHAT_ID || "";
 
+// 飞书云空间文件夹 token。可先留空，管理员飞书登录后会自动创建并在日志里打印。
+export const FEISHU_RESUME_FOLDER_TOKEN = String(process.env.FEISHU_RESUME_FOLDER_TOKEN || "").trim();
+export const DRIVE_FOLDER_NAME = "招聘台简历存档";
+export const DRIVE_POINTER_NAME = "recruit-workbench.json";
+export const DRIVE_DB_PREFIX = "recruit-db-";
+
 // 仅当显式 DEV_LOGIN=1 时开启。生产环境不会默认打开，必须主动设置。
 export const DEV_LOGIN = process.env.DEV_LOGIN === "1";
 

@@ -3,6 +3,7 @@ import path from "node:path";
 import express from "express";
 import cookieParser from "cookie-parser";
 import { initDb, closeDb } from "./db.js";
+import { flushDriveBackup, restoreDatabaseIfNeeded, startDriveMaintenance } from "./drive.js";
 import {
   PORT,
   IS_PROD,
@@ -18,6 +19,7 @@ import { startFeishuOAuth, handleFeishuCallback } from "./auth.js";
 import { getTenantAccessToken } from "./feishu.js";
 import api from "./routes.js";
 
+await restoreDatabaseIfNeeded();
 await initDb();
 getSessionSecret();
 
@@ -79,12 +81,21 @@ const server = app.listen(PORT, "0.0.0.0", async () => {
       console.log(`飞书租户凭证：检查异常（${err.message}）`);
     }
   }
+  startDriveMaintenance().catch((err) => console.log(`飞书云空间初始化失败：${err.message}`));
 });
 
-function shutdown() {
+let shuttingDown = false;
+async function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  try {
+    await flushDriveBackup();
+  } catch (err) {
+    console.log(`云备份收尾失败：${err.message}`);
+  }
   closeDb();
   server.close(() => process.exit(0));
-  setTimeout(() => process.exit(0), 2000).unref();
+  setTimeout(() => process.exit(0), 8000).unref();
 }
 
 process.on("SIGINT", shutdown);
