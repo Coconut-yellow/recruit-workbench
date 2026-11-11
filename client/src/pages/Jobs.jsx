@@ -66,6 +66,24 @@ export default function Jobs({ ctx }) {
     }
   }
 
+  async function removeJob(job) {
+    const confirmed = window.confirm(
+      `确定删除职位「${job.title}」？\n职位和协作分配会被移除。候选人仍留在人才库，并变为未关联职位。简历仍留在存档。`
+    );
+    if (!confirmed) return;
+    try {
+      await api.deleteJob(job.id);
+      if (editing === job.id) {
+        setEditing(null);
+        setForm(EMPTY);
+      }
+      toast("职位已删除");
+      await refresh();
+    } catch (err) {
+      toast(err.message, "danger");
+    }
+  }
+
   async function removeMember(jobId, userId) {
     try {
       await api.removeMember(jobId, userId);
@@ -126,6 +144,9 @@ export default function Jobs({ ctx }) {
             <div className="space" />
             {job.canManage ? (
               <button className="btn btn-sm" type="button" onClick={() => startEdit(job)}>编辑</button>
+            ) : null}
+            {job.canDelete ? (
+              <button className="btn btn-sm btn-danger" type="button" onClick={() => removeJob(job)}>删除</button>
             ) : null}
           </div>
           <p className="muted">必须：{job.must || "—"}</p>

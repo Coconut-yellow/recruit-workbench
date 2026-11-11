@@ -268,6 +268,7 @@ router.get("/jobs", requireUser, (req, res) => {
       ...j,
       members: byJob[j.id] || [],
       canManage: perms.canManageJob(req.user, j.id),
+      canDelete: perms.canDeleteJob(req.user, j.id),
       canMove: perms.canMoveCandidate(req.user, j.id),
     })),
   });
@@ -305,6 +306,28 @@ router.post("/jobs", requireUser, (req, res) => {
       );
     }
     res.json({ job: get("SELECT * FROM jobs WHERE id = ?", [id]) });
+  } catch (err) {
+    handleError(res, err);
+  }
+});
+
+router.delete("/jobs/:id", requireUser, (req, res) => {
+  try {
+    const job = get("SELECT * FROM jobs WHERE id = ?", [req.params.id]);
+    if (!job) return res.status(404).json({ error: "职位不存在" });
+    perms.assert(perms.canDeleteJob(req.user, job.id), "只有管理员或该职位负责人可以删除职位");
+    const now = nowIso();
+    const unlinkedCandidates = run(
+      "UPDATE candidates SET job_id = NULL, updated_at = ? WHERE job_id = ?",
+      [now, job.id]
+    ).changes;
+    const unlinkedResumes = run(
+      "UPDATE resumes SET job_id = NULL WHERE job_id = ?",
+      [job.id]
+    ).changes;
+    run("DELETE FROM job_members WHERE job_id = ?", [job.id]);
+    run("DELETE FROM jobs WHERE id = ?", [job.id]);
+    res.json({ ok: true, unlinkedCandidates, unlinkedResumes });
   } catch (err) {
     handleError(res, err);
   }

@@ -33,6 +33,12 @@ export function canManageJob(user, jobId) {
   return Boolean(m && m.role === "owner");
 }
 
+export function canDeleteJob(user, jobId) {
+  if (!user) return false;
+  if (user.role === "interviewer" || user.role === "readonly") return false;
+  return canManageJob(user, jobId);
+}
+
 export function canAssign(user, jobId) {
   return canManageJob(user, jobId);
 }

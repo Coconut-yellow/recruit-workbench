@@ -35,6 +35,7 @@ export const api = {
   jobs: () => request("/api/jobs"),
   createJob: (body) => request("/api/jobs", { method: "POST", body }),
   updateJob: (id, body) => request(`/api/jobs/${id}`, { method: "PATCH", body }),
+  deleteJob: (id) => request(`/api/jobs/${id}`, { method: "DELETE" }),
   assignMember: (jobId, body) => request(`/api/jobs/${jobId}/members`, { method: "PUT", body }),
   removeMember: (jobId, userId) =>
     request(`/api/jobs/${jobId}/members/${userId}`, { method: "DELETE" }),

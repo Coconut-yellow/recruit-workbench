@@ -6,7 +6,10 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export const ROOT = path.resolve(__dirname, "..");
-export const DATA_DIR = path.join(ROOT, "data");
+// RECRUIT_DATA_DIR is for tests so they do not write the workspace database.
+export const DATA_DIR = process.env.RECRUIT_DATA_DIR
+  ? path.resolve(process.env.RECRUIT_DATA_DIR)
+  : path.join(ROOT, "data");
 export const RESUME_DIR = path.join(DATA_DIR, "resumes");
 export const DB_PATH = path.join(DATA_DIR, "recruit.db");
 export const SESSION_SECRET_FILE = path.join(DATA_DIR, "session.secret");
